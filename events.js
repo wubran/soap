@@ -36,15 +36,15 @@ function onClick(event){
 }
 
 function onScroll(event){
-    for(let i = 0; i<5; i++){
-        spawnPoint(event.pageX*SCALE, event.pageY*SCALE, 150, 60);
+    for(let i = 0; i<SCROLLAMT; i++){
+        spawnPoint(event.pageX*SCALE, event.pageY*SCALE, 150, SCROLLAMT*15);
     }
 }
 
 function onRelease(event){
     spawnPoint(mouseDownX*SCALE, mouseDownY*SCALE, 300, 0, 
-        SCALE*(event.pageX-mouseDownX)/Math.min(canvas.width,canvas.height),
-        SCALE*(event.pageY-mouseDownY)/Math.min(canvas.width,canvas.height));
+        5*SCALE*(event.pageX-mouseDownX)/Math.min(canvas.width,canvas.height),
+        5*SCALE*(event.pageY-mouseDownY)/Math.min(canvas.width,canvas.height));
     click = false;
 }
 

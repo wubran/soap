@@ -7,6 +7,7 @@ var mouseDownX = 0;
 var mouseDownY = 0;
 var mouseX = 0;
 var mouseY = 0;
+const SCROLLAMT = 10;
 var pause = false;
 
 const MASS_CONST = 5;
@@ -15,16 +16,24 @@ const SQRTDISTMAX = Math.sqrt(2)*DISTMAX;
 const DISTMAXSQRED = DISTMAX*DISTMAX;
 const STEEP = 0.001;
 const EQDIST = 20;
-const EDGEFAC = 0.09;
-const SLOWDISTSQRED = DISTMAX*DISTMAX*3*3;
 
-var friction = 0.95;
+// increase both if foaming
+const EDGEFAC = 0.05; // default: 0.05
+var edgefac2 = 0.4; // default: 0.2 - 0.5, generally makes bubbles bigger
+const SLOWDISTSQRED = DISTMAX*DISTMAX*4*4;
 
-const SCALE = 3;
+let death = true;
+const tpf = 4; // bigger --> smaller timesteps
+const timeFac = 1; // bigger --> faster (and bigger timesteps)
+var friction = 0.99;
+// friction is the % of speed maintained after a millisecond
+// friction^frameTime = % of speed maintained after a frame
+
+const SCALE = 4;
 var canvW = SCALE*canvas.width;
 var canvH = SCALE*canvas.height;
 
-const BORDERWIDTH = 100; //0 to 300 or so, default 125
+const BORDERWIDTH = 100*SCALE; //0 to 300 or so, default 125
 const BORDERSTRENGTH = 0.001; //0 to 200, default 30
 const BORDERSLOPE = BORDERWIDTH/BORDERSTRENGTH;
 
@@ -33,9 +42,12 @@ const sin43 = Math.sin(4*Math.PI/3);
 const cos23 = Math.cos(2*Math.PI/3);
 const cos43 = Math.cos(4*Math.PI/3);
 
+const MAXLIFE = 100;
+
 let points = [];
 
 class Point{
+
     constructor(x, y, l, r, vx, vy){
         this.x = x + (Math.random()-0.5)*r;
         this.y = y + (Math.random()-0.5)*r;
@@ -46,6 +58,7 @@ class Point{
         this.ax = 0;
         this.ay = 0;
         this.edges = [];
+        this.nearby = [];
         this.life = l;
         this.popChain = 0;
         this.mass = MASS_CONST;
@@ -53,7 +66,8 @@ class Point{
         this.canvX = this.x/SCALE;
         this.canvY = this.y/SCALE;
     }
-    calc(frametime, index){
+
+    calcDist(frametime, index){
         for(var i = index+1; i < points.length; i++){ // BOID DISTANCE CHECKING
             const that = points[i];
             const diffx = that.x-this.x;
@@ -68,21 +82,25 @@ class Point{
                 if(distsqrd < SLOWDISTSQRED){
                     // slight attraction
                     const mult = 0.005/distsqrd;
-                    this.ax += diffx*mult;
-                    that.ax -= diffx*mult;
-                    this.ay += diffy*mult;
-                    that.ay -= diffy*mult;
+                    this.nearby.push([that, diffx*mult, diffy*mult, distsqrd]);
+                    that.nearby.push([this, -diffx*mult, -diffy*mult, distsqrd]);
+
+                    // this.ax += diffx*mult;
+                    // that.ax -= diffx*mult;
+                    // this.ay += diffy*mult;
+                    // that.ay -= diffy*mult;
 
                     // drawEdge(this, that, "rgba(0,255,255,0.2)");
                 }
                 continue;
             }
 
+            const dist = Math.sqrt(distsqrd);
+
             this.edges.push(that);
             that.edges.push(this);
             drawEdge(this, that, "rgba(255, 255, 0, 0.15)");
 
-            const dist = Math.sqrt(distsqrd);
             // const mult = STEEP*(dist-EQDIST)/dist;
             const mult = 0.00001*(dist-EQDIST)*(dist+EQDIST)/dist;
       
@@ -92,6 +110,43 @@ class Point{
             that.ay -= diffy*mult;
         }
     }
+
+
+    calcNearby(){
+        const MELLOW = 4;
+        const myedges = this.edges.length;
+        // if(myedges >= 2){
+        //     return;
+        // }
+        var FAC = 10*MELLOW*MELLOW/(myedges*myedges+MELLOW);
+        // console.log(this.nearby.length)
+        for(let each of this.nearby){
+            const eachedges = each[0].edges.length;
+            // if(eachedges >= 2){
+            //     continue;
+            // }
+            FAC = FAC/(eachedges*eachedges+MELLOW);
+            this.ax += FAC*each[1];
+            each[0].ax -= FAC*each[1];
+            this.ay += FAC*each[2];
+            each[0].ay -= FAC*each[2];
+
+            // ctx.strokeStyle = "rgba(100,255,50,0.1)";
+            // ctx.lineWidth = 1;
+            // ctx.lineJoin = 'miter';
+            // ctx.beginPath();
+            // ctx.moveTo(each[0].canvX, each[0].canvY);
+            // ctx.lineTo(each[0].canvX-10_000*FAC*each[1], each[0].canvY-10_000*FAC*each[2]);
+            // ctx.stroke();
+
+            // ctx.beginPath();
+            // ctx.moveTo(this.canvX, this.canvY);
+            // ctx.lineTo(this.canvX+10_000*FAC*each[1], this.canvY+10_000*FAC*each[2]);
+            // ctx.stroke();
+        }
+    }
+
+
     calcEdges(frametime, index){
         for(let i = 0; i<this.edges.length; i++){
             for(let j = i+1; j<this.edges.length; j++){
@@ -109,11 +164,72 @@ class Point{
                 thi.ay += diffy*mult;
                 tha.ay -= diffy*mult;
 
-                drawEdge(thi, tha, "rgba(255,0,255,0.1)");
+                // drawEdge(thi, tha, "rgba(255,0,255,0.1)");
 
             }
         }
     }
+
+
+    calcEdgesV2(frametime, index){ // this has issue of edges way over 3
+        for(let i = 0; i<this.edges.length; i++){
+            for(let j = 0; j<this.edges.length; j++){
+                if(i == j){
+                    continue;
+                }
+                const thi = this.edges[i];
+                const tha = this.edges[j];
+                const lx = tha.x-thi.x;
+                const ly = tha.y-thi.y;
+                const rx = tha.x-this.x;
+                const ry = tha.y-this.y;
+
+
+                const invdistsqrd = edgefac2/(lx*lx+ly*ly);
+                // const dist = Math.sqrt(lx*lx+ly*ly);
+                const mult = (rx*lx+ry*ly)/(rx*rx+ry*ry);
+                
+                const ax = invdistsqrd*(lx - rx*mult);
+                const ay = invdistsqrd*(ly - ry*mult);
+
+                tha.ax += ax;
+                // tha.ax -= ax;
+                tha.ay += ay;
+                // tha.ay -= ay;
+
+                this.ax -= ax;
+                this.ay -= ay;
+
+                // ctx.strokeStyle = "rgba(100,255,50,0.01)";
+                // ctx.lineWidth = 1;
+                // ctx.lineJoin = 'miter';
+                // ctx.beginPath();
+                // ctx.moveTo(tha.canvX, tha.canvY);
+                // ctx.lineTo(tha.canvX+10000*ax, tha.canvY+10000*ay);
+                // ctx.stroke();
+
+                // drawEdge(thi, tha, "rgba(255,0,255,0.1)");
+
+            }
+        }
+    }
+
+
+    updateLife(frametime, index){
+        if(this.edges.length == 0){
+            this.life-=Math.random()*frametime/2;
+        }else if(this.edges.length == 1){
+            this.life-=Math.random()*frametime/6;
+        }else if (this.life > MAXLIFE){
+            this.life = Math.max(MAXLIFE, this.life-Math.random()*frametime);
+        } else{
+            this.life = Math.min(MAXLIFE, this.life+Math.random()*frametime);
+        }
+        this.life -= this.popChain;
+        this.popChain = 0;
+    }
+
+
     update(frametime, index){
         // update velocities and positions and life and edges
         var windx = 0;
@@ -131,8 +247,10 @@ class Point{
 
         this.vx += (this.ax + windx)*frametime;
         this.vy += (this.ay + windy)*frametime;
-        this.vx *= friction;
-        this.vy *= friction;
+        const fric = friction**frametime;
+        // console.log(fric);
+        this.vx *= fric;
+        this.vy *= fric;
         this.x += this.vx*frametime;
         this.y += this.vy*frametime;
         this.canvX = this.x/SCALE;
@@ -141,18 +259,10 @@ class Point{
         this.ay = 0;
 
         this.edges = [];
+        this.nearby = [];
     }
-    updateLife(frametime, index){
-        if(this.edges.length == 0){
-            this.life-=Math.random()*frametime/2;
-        }else if(this.edges.length == 1){
-            this.life-=Math.random()*frametime/6;
-        }else{
-            this.life = Math.min(100, this.life+Math.random()*frametime);
-        }
-        this.life -= this.popChain;
-        this.popChain = 0;
-    }
+
+
     draw(){
         // const sinfacing = Math.sin(this.facing);
         // const cosfacing = Math.cos(this.facing);
@@ -174,13 +284,15 @@ class Point{
         ctx.lineWidth = SQUARESIDE;
         ctx.lineJoin = 'miter';
         ctx.beginPath();
-        ctx.moveTo(this.canvX+this.vx*N+20*this.vx, this.canvY+this.vy*N+20*this.vy)
-        ctx.lineTo(this.canvX-this.vx*N-20*this.vx, this.canvY-this.vy*N-20*this.vy);
+        // ctx.moveTo(this.canvX+this.vx*N+20*this.vx, this.canvY+this.vy*N+20*this.vy)
+        // ctx.lineTo(this.canvX-this.vx*N-20*this.vx, this.canvY-this.vy*N-20*this.vy);
+        ctx.moveTo(this.canvX+this.vx*N, this.canvY+this.vy*N)
+        ctx.lineTo(this.canvX-this.vx*N, this.canvY-this.vy*N);
         ctx.stroke();
     }
 }
 
-function spawnPoint(x, y, l=100, r=1, vx=0, vy=0){
+function spawnPoint(x, y, l=MAXLIFE, r=1, vx=0, vy=0){
     points.push(new Point(x, y, l, r, vx, vy));
 }
 
@@ -207,44 +319,72 @@ function fillscreen(){
 }
 
 let oldTime = 0;
-let death = false;
-const tpf = 8; // bigger --> smaller timesteps
-const timeFac = 2; // bigger --> faster (and bigger timesteps)
+let oldTimer = Date.now();
+let times = [0,0,0,0,0,0,0];
+
+function timeLog(index){
+    times[index]+=Date.now()-oldTimer; 
+    oldTimer = Date.now();
+}
+
 function loop(timestamp){
+    times = [0,0,0,0,0,0,0];
     for(let tick = 0; tick < tpf; tick++){
+        timeLog(0);
         const tickT = timeFac * (timestamp - oldTime)/tpf;
         if(!pause){
 
             for(var i = 0; i < points.length; i++){
-                points[i].calc(tickT, i);
-                
+                points[i].calcDist(tickT, i);
             }
+            // sum = [0,0,0,0,0];
+            // for(each of points){
+            //     sum[Math.min(each.edges.length,4)]++;
+            // }
+            // console.log(sum, points.length);
+            timeLog(1);
+
+            for(var i = 0; i < points.length; i++){
+                points[i].calcNearby();
+            }
+            timeLog(2);
+
             for(var i = 0; i < points.length; i++){
                 points[i].calcEdges(tickT, i);
+                points[i].calcEdgesV2(tickT, i);
                 
             }
+            timeLog(3);
+
             for(var i = 0; i < points.length; i++){
                 points[i].updateLife(tickT, i);
             }
+            timeLog(4);
+
             if(tick == 0){
                 fillscreen();
                 for(var i = 0; i < points.length; i++){
                     points[i].draw();
                 }
             }
+            timeLog(5);
+
             for(var i = 0; i < points.length; i++){
-                if(death && points[i].life <= 0){
+                if(death && (points[i].life <= 0)){
                     for(let each of points[i].edges){
                         each.popChain = 95;
                     }
                     points.splice(i, 1);
-                    i++;
+                    i--;
                 }else{
                     points[i].update(tickT, i);
                 }
+                // points[i].update(tickT, i);
             }
+            timeLog(6);
         }
     }
+    console.log(times);
 
     oldTime = timestamp;
     requestAnimationFrame(loop)
