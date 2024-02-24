@@ -18,18 +18,19 @@ const STEEP = 0.001;
 const EQDIST = 20;
 
 // increase both if foaming
-const EDGEFAC = 0.05; // default: 0.05
-var edgefac2 = 0.4; // default: 0.2 - 0.5, generally makes bubbles bigger
+var EDGEFAC = 0.3; // default: 0.05
+var edgefac2 = 1 // 0.1 - 0.5, larger attempts bigger bubbles
+var DISTFORCE = 0.0001; // default 0.00001
 const SLOWDISTSQRED = DISTMAX*DISTMAX*4*4;
 
 let death = true;
 const tpf = 4; // bigger --> smaller timesteps
-const timeFac = 1; // bigger --> faster (and bigger timesteps)
-var friction = 0.99;
+const timeFac = 0.5; // bigger --> faster (and bigger timesteps)
+var friction = 0.990;
 // friction is the % of speed maintained after a millisecond
 // friction^frameTime = % of speed maintained after a frame
 
-const SCALE = 4;
+const SCALE = 2;
 var canvW = SCALE*canvas.width;
 var canvH = SCALE*canvas.height;
 
@@ -65,6 +66,7 @@ class Point{
 
         this.canvX = this.x/SCALE;
         this.canvY = this.y/SCALE;
+        this.color = "white";
     }
 
     calcDist(frametime, index){
@@ -99,10 +101,10 @@ class Point{
 
             this.edges.push(that);
             that.edges.push(this);
-            drawEdge(this, that, "rgba(255, 255, 0, 0.15)");
+            drawEdge(this, that, "rgba(255, 255, 0, 0.3)");
 
             // const mult = STEEP*(dist-EQDIST)/dist;
-            const mult = 0.00001*(dist-EQDIST)*(dist+EQDIST)/dist;
+            const mult = DISTFORCE*(dist-EQDIST)*(dist+EQDIST)/dist;
       
             this.ax += diffx*mult;
             that.ax -= diffx*mult;
@@ -118,13 +120,13 @@ class Point{
         // if(myedges >= 2){
         //     return;
         // }
-        var FAC = 10*MELLOW*MELLOW/(myedges*myedges+MELLOW);
+        var FAC = 20*MELLOW*MELLOW/(myedges*myedges+MELLOW);
         // console.log(this.nearby.length)
         for(let each of this.nearby){
             const eachedges = each[0].edges.length;
-            // if(eachedges >= 2){
-            //     continue;
-            // }
+            if(myedges + eachedges >= 4){
+                continue;
+            }
             FAC = FAC/(eachedges*eachedges+MELLOW);
             this.ax += FAC*each[1];
             each[0].ax -= FAC*each[1];
@@ -164,7 +166,7 @@ class Point{
                 thi.ay += diffy*mult;
                 tha.ay -= diffy*mult;
 
-                // drawEdge(thi, tha, "rgba(255,0,255,0.1)");
+                // drawEdge(thi, tha, "rgba(255,0,255,0.2)");
 
             }
         }
@@ -172,12 +174,16 @@ class Point{
 
 
     calcEdgesV2(frametime, index){ // this has issue of edges way over 3
+        let cmx = 0;
+        let cmy = 0;
         for(let i = 0; i<this.edges.length; i++){
+            const thi = this.edges[i];
+            cmx += thi.x-this.x;
+            cmy += thi.y-this.y;
             for(let j = 0; j<this.edges.length; j++){
                 if(i == j){
                     continue;
                 }
-                const thi = this.edges[i];
                 const tha = this.edges[j];
                 const lx = tha.x-thi.x;
                 const ly = tha.y-thi.y;
@@ -208,10 +214,19 @@ class Point{
                 // ctx.lineTo(tha.canvX+10000*ax, tha.canvY+10000*ay);
                 // ctx.stroke();
 
-                // drawEdge(thi, tha, "rgba(255,0,255,0.1)");
+
+
+                drawEdge(thi, tha, "rgba(255,0,255,0.1)");
 
             }
         }
+        // ctx.strokeStyle = "rgba(255,0,50,0.3)";
+        ctx.lineWidth = 1;
+        ctx.lineJoin = 'miter';
+        ctx.beginPath();
+        ctx.moveTo(this.canvX, this.canvY);
+        ctx.lineTo(this.canvX+cmx/SCALE, this.canvY+cmy/SCALE);
+        ctx.stroke();
     }
 
 
@@ -276,6 +291,8 @@ class Point{
         const green = 127+100*this.vy;
         const blue = 255-2*this.life;
 
+
+
         var color = 'rgba('+(red)+', '+(green)+', '+(blue)+', '+1+')';
         if(this.edges.length>3){
             color = 'red';
@@ -315,7 +332,7 @@ function fillscreen(){
     if(pause){
         ctx.fillText("paused", 35*canvas.width/40, 19*canvas.height/20);
     }
-    ctx.fillText("points: "+points.length, 32*canvas.width/40, 1*canvas.height/20);
+    ctx.fillText("points: "+points.length, 32*canvas.width/40, 1.5*canvas.height/20);
 }
 
 let oldTime = 0;
@@ -372,7 +389,7 @@ function loop(timestamp){
             for(var i = 0; i < points.length; i++){
                 if(death && (points[i].life <= 0)){
                     for(let each of points[i].edges){
-                        each.popChain = 95;
+                        each.popChain = 99;
                     }
                     points.splice(i, 1);
                     i--;
@@ -384,7 +401,7 @@ function loop(timestamp){
             timeLog(6);
         }
     }
-    console.log(times);
+    // console.log(times);
 
     oldTime = timestamp;
     requestAnimationFrame(loop)
