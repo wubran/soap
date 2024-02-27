@@ -36,7 +36,7 @@ var canvH = SCALE*canvas.height;
 
 const BORDERWIDTH = 100*SCALE; //0 to 300 or so, default 125
 const BORDERSTRENGTH = 0.001; //0 to 200, default 30
-const BORDERSLOPE = BORDERWIDTH/BORDERSTRENGTH;
+const BORDERSLOPE = BORDERSTRENGTH/BORDERWIDTH;
 
 const sin23 = Math.sin(2*Math.PI/3);
 const sin43 = Math.sin(4*Math.PI/3);
@@ -67,6 +67,8 @@ class Point{
         this.canvX = this.x/SCALE;
         this.canvY = this.y/SCALE;
         this.color = "white";
+
+        this.curvy = 0;
     }
 
     calcDist(frametime, index){
@@ -220,13 +222,16 @@ class Point{
 
             }
         }
-        // ctx.strokeStyle = "rgba(255,0,50,0.3)";
+        cmx /= SCALE;
+        cmy /= SCALE;
+        ctx.strokeStyle = "rgba(138,255,138,0.3)";
         ctx.lineWidth = 1;
         ctx.lineJoin = 'miter';
         ctx.beginPath();
         ctx.moveTo(this.canvX, this.canvY);
-        ctx.lineTo(this.canvX+cmx/SCALE, this.canvY+cmy/SCALE);
+        ctx.lineTo(this.canvX+cmx, this.canvY+cmy);
         ctx.stroke();
+        this.curvy = cmx*cmx+cmy*cmy;
     }
 
 
@@ -240,6 +245,11 @@ class Point{
         } else{
             this.life = Math.min(MAXLIFE, this.life+Math.random()*frametime);
         }
+
+        if(this.curvy > 200 && this.edges.length >= 2){
+            this.life -= 1.2*Math.random()*frametime;
+        }
+
         this.life -= this.popChain;
         this.popChain = 0;
     }
@@ -250,14 +260,14 @@ class Point{
         var windx = 0;
         var windy = 0;
         if(BORDERWIDTH>=this.x){
-          windx = -this.x/BORDERSLOPE+BORDERSTRENGTH;
+          windx = -this.x*BORDERSLOPE+BORDERSTRENGTH;
         } else if(this.x>=canvW-BORDERWIDTH) {
-          windx = -(this.x-canvW)/BORDERSLOPE-BORDERSTRENGTH;
+          windx = -(this.x-canvW)*BORDERSLOPE-BORDERSTRENGTH;
         }
         if(BORDERWIDTH>=this.y){
-          windy = -this.y/BORDERSLOPE+BORDERSTRENGTH;
+          windy = -this.y*BORDERSLOPE+BORDERSTRENGTH;
         } else if(this.y>=canvH-BORDERWIDTH) {
-          windy = -(this.y-canvH)/BORDERSLOPE-BORDERSTRENGTH;
+          windy = -(this.y-canvH)*BORDERSLOPE-BORDERSTRENGTH;
         }
 
         this.vx += (this.ax + windx)*frametime;
